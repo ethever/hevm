@@ -29,6 +29,26 @@ import Numeric.Natural (Natural)
 import System.Process
 import Control.Monad.IO.Class
 import EVM.Effects
+import Control.Concurrent (QSemN)
+import Control.Concurrent.STM (STM)
+import Control.Concurrent.STM.TMVar (TMVar)
+import Network.HTTP.Client (HttpException (..), HttpExceptionContent (..))
+import Control.Concurrent.QSemN (waitQSemN)
+import Control.Concurrent (signalQSemN)
+import Control.Monad.STM (atomically)
+import Control.Concurrent.STM.TVar (TVar)
+import GHC.IO.Unsafe (unsafePerformIO)
+import Control.Concurrent.STM (newTVarIO)
+import Control.Concurrent.STM (readTVar)
+import Control.Concurrent.STM (modifyTVar')
+import Control.Concurrent.STM (readTMVar)
+import Control.Concurrent.STM (newEmptyTMVarIO)
+import Control.Concurrent.STM (putTMVar)
+import Optics.Operators.Unsafe ((^?!))
+import Control.Exception as E
+import Control.Retry
+import Network.HTTP.Types.Status (status429)
+import Control.Concurrent (newQSemN)
 
 -- | Abstract representation of an RPC fetch request
 data RpcQuery a where
@@ -132,10 +152,71 @@ parseBlock j = do
   -- default codesize, default gas limit, default feescedule
   pure $ Block coinbase timestamp number prd gasLimit (fromMaybe 0 baseFee) 0xffffffff feeSchedule
 
+
+type RCache = TVar [(Text, Value, TMVar (Maybe Value))]
+
+cache :: RCache
+{-# NOINLINE cache #-}
+cache = unsafePerformIO $ newTVarIO []
+
+-- Helper function to look up a request in the cache using STM
+lookupCacheSTM :: Text -> Value -> STM (Maybe (TMVar (Maybe Value)))
+lookupCacheSTM url x = do
+  cacheMap <- readTVar cache
+  pure $ lookup (url, x) [((u, v), tmvar) | (u, v, tmvar) <- cacheMap]
+
+-- Helper function to insert a new request into the cache using STM
+insertIntoCacheSTM :: Text -> Value -> TMVar (Maybe Value) -> STM ()
+insertIntoCacheSTM url x tmvar = modifyTVar' cache (\c -> (url, x, tmvar) : c)
+
+
+fetchWithSession' :: QSemN -> Text -> Session -> Value -> IO (Maybe Value)
+fetchWithSession' sem url sess x = retrying rp shouldRetry $ \_ -> do
+  -- Acquire semaphore before making the request
+  bracket (waitQSemN sem 1) (const $ signalQSemN sem 1) $ \_ -> do
+    -- First check if the request is in the cache
+    maybeCacheTMVar <- atomically $ lookupCacheSTM url x
+
+    case maybeCacheTMVar of
+      Just tmvar -> do
+        -- traceIO $ "read from cache with url: " ++ unpack url ++ " session: " ++ show sess ++ " value: " ++ show x
+        atomically $ readTMVar tmvar
+      Nothing -> do
+        -- traceIO $ "fetch from rpc with url: " ++ unpack url ++ " session: " ++ show sess ++ " value: " ++ show x
+        newTMVar <- newEmptyTMVarIO
+        atomically $ insertIntoCacheSTM url x newTMVar
+        result <- tryRequest url sess x
+        atomically $ handleHttpResultsSTM newTMVar result
+  where
+    rp = exponentialBackoff 1000 <> limitRetries 100
+    -- Encapsulates the logic of making the HTTP request
+    tryRequest :: Text -> Session -> Value -> IO (Either HttpException (Response Value))
+    tryRequest t s v = E.try $ asValue =<< Session.post s (unpack t) v
+
+    -- Handles the result and fills the TMVar accordingly
+    handleHttpResultsSTM :: TMVar (Maybe Value) -> Either HttpException (Response Value) -> STM (Maybe Value)
+    handleHttpResultsSTM tm rr = do
+      let response = case rr of
+            Right r -> r ^? (lensVL responseBody) % key "result"
+            Left e -> handler e
+      putTMVar tm response
+      pure response
+      where
+        handler :: HttpException -> Maybe Value
+        -- 429 exception occurred, return Nothing to trigger retry
+        handler (HttpExceptionRequest _ (StatusCodeException resp _))
+          | resp ^?! lensVL responseStatus == status429 = Nothing
+        -- handler (HttpExceptionRequest _ (InternalException _)) = pure Nothing
+        -- handler (HttpExceptionRequest _ (ConnectionTimeout)) = pure Nothing
+        -- handler (HttpExceptionRequest _ (NoResponseDataReceived)) = pure Nothing
+        handler e = throw e
+    shouldRetry _ (Just _) = pure False
+    shouldRetry _ Nothing = pure True
+
 fetchWithSession :: Text -> Session -> Value -> IO (Maybe Value)
 fetchWithSession url sess x = do
-  r <- asValue =<< Session.post sess (unpack url) x
-  pure (r ^? (lensVL responseBody) % key "result")
+  sem <- newQSemN 10
+  fetchWithSession' sem url sess x
 
 fetchContractWithSession
   :: BlockNumber -> Text -> Addr -> Session -> IO (Maybe Contract)
