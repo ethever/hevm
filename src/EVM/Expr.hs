@@ -1132,7 +1132,7 @@ simplify e = if (mapExpr go e == e)
       | x == 0 = ITE a t f
       | otherwise = t
     go (ITE (Or a b@(Lit _)) t f) = ITE (Or b a) t f
-
+    go (ITE (IsZero a) b c) = ITE a c b
     -- we write at least 32, so if x <= 32, it's FALSE
     go o@(EVM.Types.LT (BufLength (WriteWord {})) (Lit x))
       | x <= 32 = Lit 0
