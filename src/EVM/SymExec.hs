@@ -125,6 +125,8 @@ symAbiArg name = \case
     Comp . V.toList . V.imap (\(T.pack . show -> i) tp -> symAbiArg (name <> "-a-" <> i) tp) $ (V.replicate sz tps)
   AbiTupleType tps ->
     Comp . V.toList . V.imap (\(T.pack . show -> i) tp -> symAbiArg (name <> "-t-" <> i) tp) $ tps
+  AbiBytesDynamicType -> 
+    Dy [] (v) (AbstractBuf name)
   t -> internalError $ "TODO: symbolic abi encoding for " <> show t
   where
     v = Var name
@@ -168,6 +170,7 @@ cdLen = go (Lit 4)
       (hd:tl) -> case hd of
                    St _ _ -> go (Expr.add acc (Lit 32)) tl
                    Comp xs | all isSt xs -> go acc (xs <> tl)
+                   Dy _ _ b -> go (Expr.add acc (BufLength b)) tl
                    _ -> internalError "unsupported"
 
 writeSelector :: Expr Buf -> Text -> Expr Buf
@@ -188,6 +191,7 @@ combineFragments fragments base = go (Lit 4) fragments (base, [])
         St p w -> go (Expr.add idx (Lit 32)) rest (Expr.writeWord idx w buf, p <> ps)
         -- compound fragments that contain only static fragments get written in place
         Comp xs | all isSt xs -> go idx (xs <> rest) (buf,ps)
+        Dy p w b -> go (Expr.add idx (BufLength b)) rest (Expr.writeWord idx w buf, p <> ps)
         -- dynamic fragments are not yet supported... :/
         s -> internalError $ "unsupported cd fragment: " <> show s
 
