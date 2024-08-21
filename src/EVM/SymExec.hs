@@ -835,11 +835,12 @@ showModel cd (expr, res) = do
 
 
 formatCex :: Expr Buf -> Maybe Sig -> SMTCex -> Text
-formatCex cd sig m@(SMTCex _ _ _ store blockContext txContext) = T.unlines $
+formatCex cd sig m@(SMTCex _ addrs _ store blockContext txContext) = T.unlines $
   [ "Calldata:"
   , indent 2 cd'
   , ""
   ]
+  <> addrsCex
   <> storeCex
   <> txCtx
   <> blockCtx
@@ -854,6 +855,16 @@ formatCex cd sig m@(SMTCex _ _ _ store blockContext txContext) = T.unlines $
     cd' = case sig of
       Nothing -> prettyBuf . Expr.concKeccakSimpExpr . defaultSymbolicValues $ subModel m cd
       Just (Sig n ts) -> prettyCalldata m cd n ts
+
+    addrsCex :: [Text]
+    addrsCex 
+      | Map.null addrs = []
+      | otherwise = 
+          [
+            "Addrs:",
+            indent 2 $ T.unlines $ Map.foldrWithKey (\k v acc -> (T.pack . show $ k) <> ": " <> (T.pack . show $ v) : acc) mempty addrs,
+            ""
+          ]
 
     storeCex :: [Text]
     storeCex
