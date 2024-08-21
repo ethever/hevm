@@ -815,35 +815,29 @@ showModel cd (expr, res) = do
     Unsat -> pure () -- ignore unreachable branches
     Error e -> internalError $ "smt solver returned an error: " <> show e
     EVM.Solvers.Unknown -> do
+      putStrLn ""
       putStrLn "--- Branch ---"
-      putStrLn ""
       putStrLn "Unable to produce a model for the following end state:"
-      putStrLn ""
       T.putStrLn $ indent 2 $ formatExpr expr
       putStrLn ""
     Sat cex -> do
+      putStrLn ""
       putStrLn "--- Branch ---"
-      putStrLn ""
       putStrLn "Inputs:"
-      putStrLn ""
       T.putStrLn $ indent 2 $ formatCex cd Nothing cex
-      putStrLn ""
       putStrLn "End State:"
-      putStrLn ""
       T.putStrLn $ indent 2 $ formatExpr expr
-      putStrLn ""
 
 
 formatCex :: Expr Buf -> Maybe Sig -> SMTCex -> Text
 formatCex cd sig m@(SMTCex _ addrs _ store blockContext txContext) = T.unlines $
   [ "Calldata:"
   , indent 2 cd'
-  , ""
   ]
-  <> addrsCex
   <> storeCex
   <> txCtx
   <> blockCtx
+  <> addrsCex
   where
     -- we attempt to produce a model for calldata by substituting all variables
     -- and buffers provided by the model into the original calldata expression.
@@ -862,8 +856,7 @@ formatCex cd sig m@(SMTCex _ addrs _ store blockContext txContext) = T.unlines $
       | otherwise = 
           [
             "Addrs:",
-            indent 2 $ T.unlines $ Map.foldrWithKey (\k v acc -> (T.pack . show $ k) <> ": " <> (T.pack . show $ v) : acc) mempty addrs,
-            ""
+            indent 2 $ T.unlines $ Map.foldrWithKey (\k v acc -> (T.pack . show $ k) <> ": " <> (T.pack . show $ v) : acc) mempty addrs
           ]
 
     storeCex :: [Text]
@@ -875,7 +868,6 @@ formatCex cd sig m@(SMTCex _ addrs _ store blockContext txContext) = T.unlines $
               ("Addr " <> (T.pack . show $ key)
                 <> ": " <> (T.pack $ show (Map.toList val))) : acc
             ) mempty store
-          , ""
           ]
 
     txCtx :: [Text]
@@ -886,7 +878,6 @@ formatCex cd sig m@(SMTCex _ addrs _ store blockContext txContext) = T.unlines $
         , indent 2 $ T.unlines $ Map.foldrWithKey (\key val acc ->
             (showTxCtx key <> ": " <> (T.pack $ show val)) : acc
           ) mempty (filterSubCtx txContext)
-        , ""
         ]
 
     -- strips the frame arg from frame context vars to make them easier to read
@@ -912,7 +903,6 @@ formatCex cd sig m@(SMTCex _ addrs _ store blockContext txContext) = T.unlines $
         , indent 2 $ T.unlines $ Map.foldrWithKey (\key val acc ->
             (T.pack $ show key <> ": " <> show val) : acc
           ) mempty txContext
-        , ""
         ]
 
     prettyBuf :: Expr Buf -> Text
