@@ -799,6 +799,17 @@ equivalenceCheck' solvers branchesA branchesB = do
 both' :: (a -> b) -> (a, a) -> (b, b)
 both' f (x, y) = (f x, f y)
 
+produceSuccessModels :: App m => SolverGroup -> Expr End -> m [(Expr End, CheckSatResult)]
+produceSuccessModels solvers expr = do
+  let flattened = flattenExpr expr
+  let filteredExpr = filter (\case Success {} -> True; _ -> False) flattened
+      withQueries conf = fmap (\e -> ((assertProps conf) . extractProps $ e, e)) filteredExpr
+  conf <- readConfig
+  results <- liftIO $ (flip mapConcurrently) (withQueries conf) $ \(query, leaf) -> do
+    res <- checkSat solvers query
+    pure (res, leaf)
+  pure $ fmap swap $ filter (\(res, _) -> not . isUnsat $ res) results
+
 produceModels :: App m => SolverGroup -> Expr End -> m [(Expr End, CheckSatResult)]
 produceModels solvers expr = do
   let flattened = flattenExpr expr

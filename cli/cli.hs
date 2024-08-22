@@ -82,6 +82,7 @@ data Command w
       , sig           :: w ::: Maybe Text         <?> "Signature of types to decode / encode"
       , arg           :: w ::: [String]           <?> "Values to encode"
       , getModels     :: w ::: Bool               <?> "Print example testcase for each execution path"
+      , getSuccessModels     :: w ::: Bool               <?> "Print example testcase for only each execution path lead to Success End"
       , showTree      :: w ::: Bool               <?> "Print branches explored in tree view"
       , showReachableTree :: w ::: Bool           <?> "Print only reachable branches explored in tree view"
       , smttimeout    :: w ::: Maybe Natural      <?> "Timeout given to SMT solver in seconds (default: 300)"
@@ -374,6 +375,10 @@ showExtras solvers cmd calldata expr = do
   when cmd.getModels $ do
     liftIO $ putStrLn $ "=== Models for " <> show (Expr.numBranches expr) <> " branches ==="
     ms <- produceModels solvers expr
+    liftIO $ forM_ ms (showModel (fst calldata))
+  when cmd.getSuccessModels $ do
+    liftIO $ putStrLn $ "=== Success models for " <> show (Expr.numBranches expr) <> " branches ==="
+    ms <- produceSuccessModels solvers expr
     liftIO $ forM_ ms (showModel (fst calldata))
 
 isTestOrLib :: Text -> Bool
