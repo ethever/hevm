@@ -902,9 +902,9 @@ formatCex cd sig m@(SMTCex _ addrs _ store blockContext txContext) = T.unlines $
       where
         go :: Expr EWord -> W256 -> Bool
         go (TxValue) _ = True
-        go (Balance {}) _ = internalError "TODO: BALANCE"
-        go (Gas {}) _ = internalError "TODO: Gas"
-        go _ _ = False
+        -- go (Balance {}) _ = internalError "TODO: BALANCE"
+        -- go (Gas {}) _ = internalError "TODO: Gas"
+        go _ _ = True
 
     blockCtx :: [Text]
     blockCtx
