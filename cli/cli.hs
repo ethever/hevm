@@ -88,6 +88,7 @@ data Command w
       , maxIterations :: w ::: Maybe Integer      <?> "Number of times we may revisit a particular branching point"
       , solver        :: w ::: Maybe Text         <?> "Used SMT solver: z3 (default), cvc5, or bitwuzla"
       , smtdebug      :: w ::: Bool               <?> "Print smt queries sent to the solver"
+      , dumpExprs     :: w ::: Bool               <?> "Dump expr internal used"
       , debug         :: w ::: Bool               <?> "Debug printing of internal behaviour"
       , trace         :: w ::: Bool               <?> "Dump trace"
       , assertions    :: w ::: Maybe [Word256]    <?> "Comma separated list of solc panic codes to check for (default: user defined assertion violations only)"
@@ -211,6 +212,7 @@ main = withUtf8 $ do
     , abstRefineArith = cmd.abstractArithmetic
     , dumpTrace = cmd.trace
     , decomposeStorage = Prelude.not cmd.noDecompose
+    , dumpExprs = cmd.dumpExprs
     } }
   case cmd of
     Version {} ->putStrLn getFullVersion
